@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { 
   MessageSquare, 
   Globe, 
@@ -10,16 +10,16 @@ import {
   Zap, 
   Activity, 
   ShieldAlert, 
-  RotateCcw,
   Terminal,
-  Settings
+  Settings,
+  Code
 } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('browser');
 
   const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', content: 'أهلاً بك. يمكنك اختبار قوة تحمل موقعك أو طلب تعديل الكود في أي وقت.' }
+    { role: 'assistant', content: 'مرحباً بك! يمكنك استخدام الأدوات لاختبار السيرفرات والضغط.' }
   ]);
   const [chatInput, setChatInput] = useState('');
 
@@ -48,10 +48,8 @@ export default function App() {
   
   const [isRunningTest, setIsRunningTest] = useState(false);
   const [sentRequests, setSentRequests] = useState(0);
-  const [activeConnections, setActiveConnections] = useState(0);
   const [latencyMs, setLatencyMs] = useState(0);
   const [errorCount, setErrorCount] = useState(0);
-  const [successCount, setSuccessCount] = useState(0);
   const [requestsPerSec, setRequestsPerSec] = useState(0);
   const [logs, setLogs] = useState([]);
 
@@ -60,24 +58,22 @@ export default function App() {
   const rpsTimerRef = useRef(null);
 
   const addLog = (msg) => {
-    setLogs((prev) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 49)]);
+    setLogs((prev) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 29)]);
   };
 
   const runStressWorker = async (targetUrl) => {
     if (!isTestingRef.current) return;
 
     const userAgents = [
-      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
-      'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36',
-      'Mozilla/5.0 (Compatible; StressBot/2.0; +http://localhost)'
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+      'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 Chrome/120.0.0.0',
+      'Mozilla/5.0 (Compatible; StressBot/2.0)'
     ];
 
     const randomUA = userAgents[Math.floor(Math.random() * userAgents.length)];
     const startTime = performance.now();
 
     try {
-      setActiveConnections((prev) => prev + 1);
-      
       await fetch(targetUrl, {
         method: 'GET',
         mode: 'no-cors',
@@ -87,19 +83,17 @@ export default function App() {
 
       const duration = Math.round(performance.now() - startTime);
       setLatencyMs(duration);
-      setSuccessCount((prev) => prev + 1);
 
     } catch (err) {
       setErrorCount((prev) => prev + 1);
     } finally {
-      setActiveConnections((prev) => Math.max(0, prev - 1));
       setSentRequests((prev) => {
         const next = prev + 1;
         requestsCounterRef.current += 1;
         
         if (next >= totalAgents) {
           stopTest();
-          addLog(`اكتمل الاختبار! تم إرسال ${totalAgents.toLocaleString()} طلب بنجاح.`);
+          addLog(`اكتمل الاختبار! تم إرسال ${totalAgents.toLocaleString()} طلب.`);
         }
         return next;
       });
@@ -117,10 +111,9 @@ export default function App() {
     isTestingRef.current = true;
     setSentRequests(0);
     setErrorCount(0);
-    setSuccessCount(0);
     requestsCounterRef.current = 0;
 
-    addLog(`بدء الضغط الفعلي على: ${currentUrl} بـ ${totalAgents.toLocaleString()} بوت...`);
+    addLog(`بدء الضغط على: ${currentUrl}`);
 
     rpsTimerRef.current = setInterval(() => {
       setRequestsPerSec(requestsCounterRef.current);
@@ -166,102 +159,87 @@ export default function App() {
     setTimeout(() => {
       setChatMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'استلمت الطلب، يمكنك بدء الضغط أو المعاينة من قسم المتصفح.' }
+        { role: 'assistant', content: 'تم استقبال رسالتك بنجاح.' }
       ]);
     }, 500);
   };
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans antialiased overflow-hidden">
+    <div className="flex flex-col md:flex-row h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
       
-      <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between">
-        <div>
-          <div className="p-4 border-b border-slate-800 flex items-center gap-2">
-            <Cpu className="text-blue-500 w-6 h-6" />
-            <span className="font-bold text-lg tracking-wide">DevStudio AI</span>
+      {/* Sidebar Navigation */}
+      <aside className="w-full md:w-64 bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 flex md:flex-col justify-between shrink-0 p-3">
+        <div className="flex md:flex-col items-center md:items-stretch w-full justify-between gap-2">
+          <div className="flex items-center gap-2 p-1 font-bold text-base md:text-lg">
+            <Cpu className="text-blue-500 w-5 h-5 shrink-0" />
+            <span>DevStudio AI</span>
           </div>
 
-          <nav className="p-3 space-y-1">
+          <div className="flex md:flex-col gap-1">
             <button
               onClick={() => setActiveTab('browser')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
-                activeTab === 'browser'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs md:text-sm font-medium transition ${
+                activeTab === 'browser' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'
               }`}
             >
               <Globe className="w-4 h-4" />
-              <span>المتصفح واختبار الضغط</span>
+              <span>المتصفح والأدوات</span>
             </button>
 
             <button
               onClick={() => setActiveTab('chat')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
-                activeTab === 'chat'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs md:text-sm font-medium transition ${
+                activeTab === 'chat' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'
               }`}
             >
               <MessageSquare className="w-4 h-4" />
-              <span>شات الذكاء الاصطناعي</span>
+              <span>الدردشة</span>
             </button>
-          </nav>
-        </div>
-
-        <div className="p-4 border-t border-slate-800 text-xs text-slate-500 flex justify-between items-center">
-          <span>Engine Status</span>
-          <span className="flex items-center gap-1 text-emerald-400">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Ready
-          </span>
+          </div>
         </div>
       </aside>
 
+      {/* Main Workspace */}
       <main className="flex-1 flex flex-col h-full overflow-hidden">
         
         {activeTab === 'browser' && (
-          <div className="flex-1 flex flex-col h-full overflow-hidden">
+          <div className="flex-1 flex flex-col h-full overflow-y-auto md:overflow-hidden">
             
-            <header className="bg-slate-900 border-b border-slate-800 p-3 flex flex-wrap gap-3 items-center justify-between">
+            {/* Control Bar */}
+            <header className="bg-slate-900 border-b border-slate-800 p-3 flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between shrink-0">
               
-              <form onSubmit={handleUrlSubmit} className="flex-1 min-w-[300px] flex items-center gap-2 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 focus-within:border-blue-500">
+              <form onSubmit={handleUrlSubmit} className="flex-1 flex items-center gap-2 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5">
                 <Globe className="w-4 h-4 text-slate-500 shrink-0" />
                 <input
                   type="text"
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
-                  placeholder="ادخل رابط مثل example.com أو localhost:3000..."
-                  className="bg-transparent border-none text-sm w-full focus:outline-none text-slate-200"
+                  placeholder="http://localhost:3000 أو رابط الموقع..."
+                  className="bg-transparent border-none text-xs md:text-sm w-full focus:outline-none text-slate-200"
                 />
-                <button type="submit" className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded">
-                  انتقال
+                <button type="submit" className="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1 rounded">
+                  دخول
                 </button>
               </form>
 
-              <div className="flex items-center gap-2">
-                
-                <div className="flex items-center bg-slate-950 border border-slate-700 rounded-lg p-1 text-xs">
-                  <button
-                    onClick={() => setAgentType('mobile')}
-                    className={`px-2.5 py-1 rounded ${agentType === 'mobile' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
-                  >
-                    50 Mobile Agents
-                  </button>
-                  <button
-                    onClick={() => setAgentType('ai-agent')}
-                    className={`px-2.5 py-1 rounded ${agentType === 'ai-agent' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
-                  >
-                    AI Traffic
-                  </button>
-                </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={agentType}
+                  onChange={(e) => setAgentType(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none"
+                >
+                  <option value="mobile">Mobile Agents</option>
+                  <option value="ai-agent">AI Traffic</option>
+                </select>
 
                 <select
                   value={totalAgents}
                   onChange={(e) => setTotalAgents(Number(e.target.value))}
                   className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none"
                 >
-                  <option value={1000}>1,000 Requests</option>
-                  <option value={50000}>50,000 Requests</option>
-                  <option value={1000000}>1,000,000 (1M Traffic)</option>
+                  <option value={1000}>1,000 req</option>
+                  <option value={50000}>50,000 req</option>
+                  <option value={1000000}>1,000,000 req</option>
                 </select>
 
                 <select
@@ -269,110 +247,106 @@ export default function App() {
                   onChange={(e) => setConcurrencyBatch(Number(e.target.value))}
                   className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none"
                 >
-                  <option value={20}>20 Concurrent Stress</option>
-                  <option value={100}>100 High Stress</option>
-                  <option value={300}>300 Ultra Blast</option>
+                  <option value={20}>20 Concurrency</option>
+                  <option value={100}>100 Concurrency</option>
+                  <option value={300}>300 Concurrency</option>
                 </select>
 
                 <button
                   onClick={toggleTest}
-                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    isRunningTest
-                      ? 'bg-red-600 hover:bg-red-500 text-white'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  className={`flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    isRunningTest ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                   }`}
                 >
-                  {isRunningTest ? <><Square className="w-3.5 h-3.5" /> إيقاف الضغط</> : <><Play className="w-3.5 h-3.5" /> بدء اختبار الضغط</>}
+                  {isRunningTest ? <><Square className="w-3.5 h-3.5" /> إيقاف</> : <><Play className="w-3.5 h-3.5" /> بدء الضغط</>}
                 </button>
               </div>
             </header>
 
-            <div className="bg-slate-900/50 border-b border-slate-800 px-4 py-2 grid grid-cols-5 gap-4 text-xs">
-              <div className="flex items-center gap-2">
-                <Zap className="w-4 h-4 text-amber-400" />
-                <div>
-                  <div className="text-slate-400">الطلبات الكلية</div>
-                  <div className="font-mono font-bold text-slate-100">{sentRequests.toLocaleString()} / {totalAgents.toLocaleString()}</div>
+            {/* Metrics Status Bar */}
+            <div className="bg-slate-900/60 border-b border-slate-800 p-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs shrink-0">
+              <div className="flex items-center gap-2 bg-slate-950 p-2 rounded border border-slate-800">
+                <Zap className="w-4 h-4 text-amber-400 shrink-0" />
+                <div className="overflow-hidden">
+                  <div className="text-slate-500 text-[10px]">الطلبات</div>
+                  <div className="font-mono font-bold truncate">{sentRequests.toLocaleString()}</div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-blue-400" />
-                <div>
-                  <div className="text-slate-400">السرعة الحالية (RPS)</div>
-                  <div className="font-mono font-bold text-blue-400">{requestsPerSec} req/sec</div>
+              <div className="flex items-center gap-2 bg-slate-950 p-2 rounded border border-slate-800">
+                <Activity className="w-4 h-4 text-blue-400 shrink-0" />
+                <div className="overflow-hidden">
+                  <div className="text-slate-500 text-[10px]">السرعة (RPS)</div>
+                  <div className="font-mono font-bold text-blue-400 truncate">{requestsPerSec} req/s</div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-emerald-400" />
-                <div>
-                  <div className="text-slate-400">زمن الاستجابة (Latency)</div>
-                  <div className="font-mono font-bold text-slate-100">{latencyMs} ms</div>
+              <div className="flex items-center gap-2 bg-slate-950 p-2 rounded border border-slate-800">
+                <Cpu className="w-4 h-4 text-emerald-400 shrink-0" />
+                <div className="overflow-hidden">
+                  <div className="text-slate-500 text-[10px]">الاستجابة</div>
+                  <div className="font-mono font-bold truncate">{latencyMs} ms</div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-rose-400" />
-                <div>
-                  <div className="text-slate-400">فشل / أخطاء السيرفر</div>
-                  <div className="font-mono font-bold text-rose-400">{errorCount}</div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <RotateCcw className="w-4 h-4 text-indigo-400" />
-                <div>
-                  <div className="text-slate-400">نمط التنفيذ</div>
-                  <div className="font-mono font-bold text-slate-100">Auto Sequential Kill</div>
+              <div className="flex items-center gap-2 bg-slate-950 p-2 rounded border border-slate-800">
+                <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+                <div className="overflow-hidden">
+                  <div className="text-slate-500 text-[10px]">الأخطاء</div>
+                  <div className="font-mono font-bold text-rose-400 truncate">{errorCount}</div>
                 </div>
               </div>
             </div>
 
-            <div className="flex-1 grid grid-cols-3 gap-0 overflow-hidden bg-slate-950">
+            {/* Workspace Area */}
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-0 overflow-hidden">
               
-              <div className="col-span-2 border-r border-slate-800 flex flex-col h-full">
-                <div className="bg-slate-900 px-3 py-1.5 border-b border-slate-800 text-xs text-slate-400 flex items-center justify-between">
-                  <span>Target Preview Frame</span>
-                  <span>{currentUrl}</span>
+              {/* Preview Box */}
+              <div className="lg:col-span-2 border-b lg:border-b-0 lg:border-r border-slate-800 flex flex-col h-64 lg:h-full">
+                <div className="bg-slate-900 px-3 py-1 border-b border-slate-800 text-[11px] text-slate-400 flex justify-between items-center shrink-0">
+                  <span>المعاينة المباشرة (Preview)</span>
+                  <span className="truncate max-w-[200px]">{currentUrl}</span>
                 </div>
                 <div className="flex-1 bg-white relative">
                   {currentUrl.includes('localhost') ? (
                     <iframe
                       srcDoc={generatedHtml}
                       className="w-full h-full border-none"
-                      title="Localhost Preview"
+                      title="Preview"
                     />
                   ) : (
                     <iframe
                       src={currentUrl}
                       className="w-full h-full border-none"
-                      title="Direct Target Preview"
+                      title="Target Preview"
                     />
                   )}
                 </div>
               </div>
 
-              <div className="col-span-1 flex flex-col h-full bg-slate-950">
+              {/* Code & Logs Panel */}
+              <div className="lg:col-span-1 flex flex-col h-full bg-slate-950">
                 
-                <div className="flex-1 border-b border-slate-800 flex flex-col min-h-0">
-                  <div className="bg-slate-900 px-3 py-1.5 border-b border-slate-800 text-xs text-slate-400 flex items-center gap-2">
-                    <Settings className="w-3.5 h-3.5" /> HTML / Source Code
+                {/* HTML Source */}
+                <div className="flex-1 border-b border-slate-800 flex flex-col min-h-[150px]">
+                  <div className="bg-slate-900 px-3 py-1 border-b border-slate-800 text-[11px] text-slate-400 flex items-center gap-1.5 shrink-0">
+                    <Code className="w-3.5 h-3.5" /> HTML Source
                   </div>
                   <textarea
                     value={generatedHtml}
                     onChange={(e) => setGeneratedHtml(e.target.value)}
-                    className="flex-1 bg-slate-950 text-emerald-400 font-mono text-xs p-3 resize-none focus:outline-none border-none leading-relaxed"
+                    className="flex-1 bg-slate-950 text-emerald-400 font-mono text-xs p-2 resize-none focus:outline-none border-none"
                   />
                 </div>
 
-                <div className="h-56 flex flex-col min-h-0 bg-slate-950">
-                  <div className="bg-slate-900 px-3 py-1.5 border-b border-slate-800 text-xs text-slate-400 flex items-center gap-2">
-                    <Terminal className="w-3.5 h-3.5" /> Traffic Console Logs
+                {/* Console Logs */}
+                <div className="h-40 flex flex-col shrink-0 bg-slate-950">
+                  <div className="bg-slate-900 px-3 py-1 border-b border-slate-800 text-[11px] text-slate-400 flex items-center gap-1.5 shrink-0">
+                    <Terminal className="w-3.5 h-3.5" /> Terminal Logs
                   </div>
-                  <div className="flex-1 p-2 overflow-y-auto font-mono text-[11px] text-slate-400 space-y-1">
+                  <div className="flex-1 p-2 overflow-y-auto font-mono text-[10px] text-slate-400 space-y-1">
                     {logs.length === 0 ? (
-                      <div className="text-slate-600 italic">اضغط "بدء اختبار الضغط" لبدء توليد الترافيك...</div>
+                      <div className="text-slate-600 italic">السجل فارغ حالياً...</div>
                     ) : (
                       logs.map((log, index) => <div key={index}>{log}</div>)
                     )}
@@ -381,23 +355,25 @@ export default function App() {
 
               </div>
             </div>
+
           </div>
         )}
 
+        {/* Chat Tab */}
         {activeTab === 'chat' && (
           <div className="flex-1 flex flex-col h-full bg-slate-950">
-            <header className="bg-slate-900 border-b border-slate-800 p-4">
-              <h2 className="text-sm font-semibold text-slate-200">محادثة الذكاء الاصطناعي العامة</h2>
+            <header className="bg-slate-900 border-b border-slate-800 p-3">
+              <h2 className="text-xs font-semibold text-slate-300">الدردشة والتعليمات</h2>
             </header>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
               {chatMessages.map((msg, index) => (
                 <div
                   key={index}
                   className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-md p-3.5 rounded-xl text-sm leading-relaxed ${
+                    className={`max-w-[85%] p-3 rounded-lg text-xs md:text-sm leading-relaxed ${
                       msg.role === 'user'
                         ? 'bg-blue-600 text-white'
                         : 'bg-slate-900 border border-slate-800 text-slate-200'
@@ -409,18 +385,18 @@ export default function App() {
               ))}
             </div>
 
-            <div className="p-4 border-t border-slate-800 bg-slate-900 flex gap-2">
+            <div className="p-3 border-t border-slate-800 bg-slate-900 flex gap-2">
               <input
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="اكتب سؤالك هنا..."
-                className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+                placeholder="اكتب رسالتك..."
+                className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
               />
               <button
                 onClick={handleSendMessage}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-lg text-sm font-medium transition"
+                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-lg text-xs font-medium transition"
               >
                 إرسال
               </button>
